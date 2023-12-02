@@ -1,38 +1,58 @@
 import cv2
 import os
+import numpy as np
+
+# Tạo thư mục chính để lưu trữ ảnh của từng người
+base_folder = 'face_data'
+face_cascade_folder = cv2.data.haarcascades
+recognizer_model = 'recognizer_model.yml'
+
+# Kiểm tra xem mô hình recognizer đã được tạo chưa, nếu chưa tạo, hãy tạo mới
+if not os.path.exists(recognizer_model):
+    print("Mô hình recognizer chưa được tạo. Hãy tạo mô hình trước.")
+    exit()
 
 # Tạo bộ phân loại khuôn mặt
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+face_cascade = cv2.CascadeClassifier(os.path.join(face_cascade_folder, 'haarcascade_frontalface_default.xml'))
 
-# Thư mục chính lưu trữ kho khuôn mặt
-base_folder = 'path/to/your/face_data/'
+# Tạo đối tượng recognizer
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.read(recognizer_model)
 
-# Duyệt qua từng thư mục trong thư mục chính
-for person_folder in os.listdir(base_folder):
-    person_folder_path = os.path.join(base_folder, person_folder)
+# Mở webcam (0 là camera mặc định, nếu có nhiều camera, hãy thay đổi giá trị này)
+cap = cv2.VideoCapture(0)
 
-    # Nếu là thư mục, tiến hành nhận diện khuôn mặt
-    if os.path.isdir(person_folder_path):
-        # Duyệt qua từng file ảnh trong thư mục người đó
-        for filename in os.listdir(person_folder_path):
-            image_path = os.path.join(person_folder_path, filename)
+while True:
+    # Đọc khung hình từ webcam
+    ret, frame = cap.read()
 
-            # Đọc ảnh từ đường dẫn
-            image = cv2.imread(image_path)
+    # Chuyển ảnh sang đa cường độ màu để xử lý nhanh hơn
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            # Chuyển đổi ảnh sang đa cường độ màu
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Sử dụng bộ phân loại để nhận diện khuôn mặt
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5, minSize=(30, 30))
 
-            # Sử dụng bộ phân loại để nhận diện khuôn mặt
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5, minSize=(30, 30))
+    for (x, y, w, h) in faces:
+        # Vẽ hình chữ nhật xung quanh khuôn mặt
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            # Duyệt qua từng khuôn mặt và lưu vào thư mục đầu ra
-            for i, (x, y, w, h) in enumerate(faces):
-                # Cắt khuôn mặt từ ảnh gốc
-                face_image = image[y:y+h, x:x+w]
+        # Nhận diện khuôn mặt và trả về id và độ chính xác
+        label, confidence = recognizer.predict(gray[y:y + h, x:x + w])
 
-                # Lưu khuôn mặt vào thư mục đầu ra với tên định dạng: person_folder/face_<original_filename>_<index>.png
-                output_path = os.path.join(person_folder_path, f"face_{filename}_{i+1}.png")
-                cv2.imwrite(output_path, face_image)
+        # Nếu độ chính xác tốt, hiển thị tên của người đó
+        if confidence < 100:
+            person_folder = os.path.join(base_folder, f'person_{label}')
+            person_name = f'Person {label}'
+            cv2.putText(frame, f"{person_name} ({confidence:.2f}%)", (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-print("Đã lưu khuôn mặt vào kho lưu trữ.")
+    # Hiển thị khung hình kết quả
+    cv2.imshow('Face Recognition', frame)
+
+    # Đợi 1 giây để người dùng có thể nhìn thấy mỗi frame
+    if cv2.waitKey(100) & 0xFF == ord('q'):
+        break
+
+# Giải phóng tài nguyên
+cap.release()
+cv2.destroyAllWindows()
